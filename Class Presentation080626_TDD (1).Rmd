@@ -1,0 +1,193 @@
+---
+title: "CYP-GUIDES Clinical Trial Analysis"
+author: "Tashae DeWalt"
+date: "2026-08-05"
+output: slidy_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(reshape2)
+
+ehrdata <- read.csv("C:/Users/tasha/Downloads/Dataset.csv")
+ehrdata_MEDS <- read.csv("C:/Users/tasha/Downloads/Medicationkey.csv")
+
+med_cols <- c(
+  "A","B","C","D","E","F","G","H","I","J","K",
+  "L","M","N","O","P","Q","R","S","T","U","V",
+  "W","X","Y","Z","AA","AB","AC","AD"
+)
+
+ehrdata$RACE.ETHNICITY <- as.factor(ehrdata$RACE.ETHNICITY)
+ehrdata$GENDER <- as.factor(ehrdata$GENDER)
+
+ehrdata$category_count <- rowSums(ehrdata[med_cols] == 1, na.rm = TRUE)
+ehrdata$high_intensity <- as.factor(ifelse(ehrdata$category_count >= 2, 1, 0))
+```
+
+---
+
+# Background
+- CYP-GUIDES trial overview  
+- LOS as a clinical outcome  
+- Medication categories A–AD  
+- Treatment intensity = number of categories given  
+
+---
+
+# Research Question
+### Research Question
+Do patients of different racial/ethnic groups receive different intensities of medication categories, and does this relate to length of stay (LOS)?
+
+### Why This Question Is Important
+Pharmacogenomics (PGx) research has historically underrepresented minority groups, limiting our understanding of how treatment decisions and medication intensity may differ across racial and ethnic populations. The CYP-GUIDES clinical trial provides a rare opportunity to examine these patterns in a real-world psychiatric inpatient setting.
+
+Recent analyses of CYP-GUIDES show:
+- Race/ethnicity was significantly associated with readmission rates (RAR), indicating meaningful differences in clinical outcomes across groups.
+- Latino patients had significantly shorter LOS than White patients (p = 0.002), suggesting LOS varies by race even under similar treatment conditions.
+- Poor metabolizers receiving PGx-guided treatment had LOS reduced by 5.6 days, demonstrating that treatment intensity and drug-gene interactions directly affect LOS.
+- Drug-gene interaction prevalence was 40%, with significantly fewer interactions in Black patients (p < 0.001), highlighting racial differences in medication response.
+
+### Abstract-Style Summary
+The CYP-GUIDES dataset reveals significant racial differences in LOS, readmission rates, and drug-gene interactions. Because medication intensity is a core component of psychiatric treatment, examining whether racial/ethnic groups receive different intensities—and whether these patterns relate to LOS—provides critical insight into potential disparities in psychiatric care. This analysis helps clarify how treatment decisions intersect with race, diagnosis, and pharmacogenomic variability.
+
+---
+
+# Data Cleaning
+### Steps Performed
+- Converted Race and Gender to factors  
+- Computed medication category count (A–AD)  
+- Created high-intensity variable (≥2 categories)  
+```{r, echo=TRUE}
+ehrdata$RACE.ETHNICITY <- as.factor(ehrdata$RACE.ETHNICITY)
+ehrdata$GENDER <- as.factor(ehrdata$GENDER)
+ehrdata$category_count <- rowSums(ehrdata[med_cols] == 1, na.rm = TRUE)
+ehrdata$high_intensity <- as.factor(ifelse(ehrdata$category_count >= 2, 1, 0))
+```
+
+---
+
+# Histogram: Medication Category Count
+```{r, echo=TRUE}
+ggplot(ehrdata, aes(category_count)) +
+  geom_histogram(bins = 20, fill = "#FFB7C5", color = "white") +
+  theme_minimal()
+```
+
+### What This Shows  
+This histogram displays how many medication categories patients typically receive. Most patients fall within lower intensity ranges, but a meaningful subset receives multiple categories. This establishes the foundation for the high‑intensity variable.
+
+---
+
+# LOS vs High Intensity
+```{r, echo=TRUE}
+ggplot(ehrdata, aes(high_intensity, LOS)) +
+  geom_boxplot(fill = "#C8A2C8", color = "black", size = 1.2, outlier.alpha = 0.4) +
+  coord_cartesian(ylim = c(0, 300)) +   # zoom in on the meaningful range
+  labs(
+    x = "Medication Intensity",
+    y = "Length of Stay (LOS)",
+    title = "LOS by Medication Intensity"
+  ) +
+  theme_minimal(base_size = 18)
+```
+
+### What This Shows 
+High‑intensity patients have noticeably higher LOS. This suggests that receiving multiple medication categories may be associated with longer hospitalization, directly addressing part of the research question.
+
+---
+
+# Race × High Intensity
+```{r, echo=TRUE}
+ggplot(ehrdata, aes(RACE.ETHNICITY, fill = high_intensity)) +
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("0" = "#FFB7C5", "1" = "#C8A2C8")) +
+  coord_flip() +
+  theme_minimal()
+```
+
+### What This Shows  
+This plot shows the proportion of high‑intensity treatment within each racial/ethnic group. Differences in bar height indicate variation in treatment intensity across groups, suggesting possible disparities in prescribing patterns.
+
+---
+
+# Diagnosis Summary Table
+```{r, echo=TRUE}
+diagnosis_summary <- ehrdata %>%
+  group_by(Diagnosis) %>%
+  summarize(
+    n = n(),
+    mean_LOS = mean(LOS, na.rm = TRUE),
+    mean_category_count = mean(category_count, na.rm = TRUE),
+    prop_high_intensity = mean(high_intensity == 1, na.rm = TRUE)
+  )
+
+kable(diagnosis_summary)
+```
+
+### What This Shows  
+Diagnosis strongly influences LOS and medication intensity. This table helps contextualize whether racial differences may be partially explained by diagnostic distribution.
+
+---
+
+# LOS by Diagnosis
+```{r, echo=TRUE}
+ggplot(diagnosis_summary, aes(Diagnosis, mean_LOS, group = 1)) +
+  geom_line(color = "#FF69B4", size = 1.2) +
+  geom_point(color = "#FF69B4", size = 3) +
+  coord_flip() +
+  theme_minimal()
+```
+
+### What This Shows  
+Some diagnoses are associated with substantially longer LOS. This highlights the importance of accounting for diagnosis when interpreting racial differences in LOS or treatment intensity.
+
+---
+
+# Heatmap: Race × Medication Categories
+```{r, echo=TRUE}
+long_med <- ehrdata %>%
+  select(ID, RACE.ETHNICITY, all_of(med_cols)) %>%
+  pivot_longer(cols = med_cols, names_to = "Category", values_to = "Given")
+
+heat_data <- long_med %>%
+  group_by(RACE.ETHNICITY, Category) %>%
+  summarize(count = sum(Given))
+
+ggplot(heat_data, aes(Category, RACE.ETHNICITY, fill = count)) +
+  geom_tile() +
+  scale_fill_gradient(low = "#FFE6F2", high = "#FF69B4") +
+  theme_minimal()
+```
+
+### What This Shows  
+This heatmap visualizes how often each racial/ethnic group receives each medication category. Darker shades indicate higher frequency. This reveals category‑level prescribing patterns and adds nuance beyond the high‑intensity variable.
+
+---
+
+# Discussion
+- Race × intensity differences suggest potential disparities  
+- LOS differences align with treatment intensity  
+- Diagnosis strongly influences LOS and intensity  
+- Heatmap shows category‑level variation across groups  
+
+---
+
+# Limitations & Conclusion
+### Limitations
+- De‑identified data  
+- No dosage or timing  
+- Medication categories simplified  
+- LOS influenced by many factors  
+
+### Conclusion
+- Medication intensity varies by race and diagnosis  
+- LOS is higher among high‑intensity patients
+- Findings support deeper exploration of clinical equity  
+
+### Works Cited
+Author/Organization. (2021). Clinical Dataset of the CYP-GUIDES Trial. Retrieved from Kaggle: https://www.kaggle.com/datasets/shashwatwork/clinical-dataset-of-the-cypguides-trial/discussion?sort=hotness
